@@ -9,5 +9,6 @@ The repository follows the following rules:
 - YAGNI: Build only what is needed now.
 - TDD: Write tests to keep code reliable.
 - Prefer readability over cleverness.
+- Always prefer drastic architectural changes, if needed, over quick fixes.
 
-If any violoation of the rules is found, report it to the user and ask if it needs to be fixed.
+If any violation of the rules is found, report it to the user and ask if it needs to be fixed.
