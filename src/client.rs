@@ -14,7 +14,6 @@ pub async fn post(
 ) -> Result<serde_json::Value, HTTPClientError> {
     let max_retries = num_retries.unwrap_or(3);
     let client = reqwest::Client::new();
-    let mut last_response = None;
     for retry in 0..=max_retries {
         let request = client
             .post(url)
@@ -24,8 +23,8 @@ pub async fn post(
         match response {
             Ok(res) => match res.error_for_status() {
                 Ok(res) => {
-                    last_response = Some(res);
-                    break;
+                    let parsed = res.json::<serde_json::Value>().await?;
+                    return Ok(parsed);
                 }
                 Err(e) => {
                     if retry == max_retries {
@@ -40,6 +39,5 @@ pub async fn post(
             }
         }
     }
-    let parsed_response = last_response.unwrap().json::<serde_json::Value>().await?;
-    Ok(parsed_response)
+    unreachable!("This point should never be reached");
 }
