@@ -14,24 +14,18 @@ pub async fn post(
 ) -> Result<serde_json::Value, HTTPClientError> {
     let max_retries = num_retries.unwrap_or(3);
     let client = reqwest::Client::new();
+    let resolved_headers = headers.unwrap_or_default();
     for retry in 0..=max_retries {
         let request = client
             .post(url)
             .json(payload)
-            .headers(headers.clone().unwrap_or_default());
-        let response = request.send().await;
-        match response {
-            Ok(res) => match res.error_for_status() {
-                Ok(res) => {
-                    let parsed = res.json::<serde_json::Value>().await?;
-                    return Ok(parsed);
-                }
-                Err(e) => {
-                    if retry == max_retries {
-                        return Err(e.into());
-                    }
-                }
-            },
+            .headers(resolved_headers.clone());
+        let result = request.send().await.and_then(|r| r.error_for_status());
+        match result {
+            Ok(res) => {
+                let parsed = res.json::<serde_json::Value>().await?;
+                return Ok(parsed);
+            }
             Err(e) => {
                 if retry == max_retries {
                     return Err(e.into());
