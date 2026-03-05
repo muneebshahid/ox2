@@ -12,10 +12,10 @@ pub enum HTTPClientError {
 }
 
 fn is_retryable_error(e: &reqwest::Error) -> bool {
-    return e.is_timeout()
+    e.is_timeout()
         || e.is_connect()
         || e.status()
-            .map_or(false, |code| RETRYABLE_ERROR_CODES.contains(&code.as_u16()));
+            .map_or(false, |code| RETRYABLE_ERROR_CODES.contains(&code.as_u16()))
 }
 
 fn backoff_delay(retry: u32) -> std::time::Duration {
