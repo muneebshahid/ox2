@@ -11,18 +11,6 @@ pub enum HTTPClientError {
     Parse(#[from] serde_json::Error),
 }
 
-fn is_retryable_error(e: &reqwest::Error) -> bool {
-    e.is_timeout()
-        || e.is_connect()
-        || e.status()
-            .map_or(false, |code| RETRYABLE_ERROR_CODES.contains(&code.as_u16()))
-}
-
-fn backoff_delay(retry: u32) -> std::time::Duration {
-    let delay = BASE_DELAY_MS * 2u64.pow(retry) as u64;
-    std::time::Duration::from_millis(std::cmp::min(delay, MAX_DELAY_MS))
-}
-
 pub async fn post(
     payload: &serde_json::Value,
     headers: Option<reqwest::header::HeaderMap>,
@@ -52,4 +40,16 @@ pub async fn post(
         }
     }
     unreachable!("This point should never be reached");
+}
+
+fn is_retryable_error(e: &reqwest::Error) -> bool {
+    e.is_timeout()
+        || e.is_connect()
+        || e.status()
+            .map_or(false, |code| RETRYABLE_ERROR_CODES.contains(&code.as_u16()))
+}
+
+fn backoff_delay(retry: u32) -> std::time::Duration {
+    let delay = BASE_DELAY_MS * 2u64.pow(retry) as u64;
+    std::time::Duration::from_millis(std::cmp::min(delay, MAX_DELAY_MS))
 }
