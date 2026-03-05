@@ -12,10 +12,10 @@ pub async fn post(
     url: &str,
     num_retries: Option<u32>,
 ) -> Result<serde_json::Value, HTTPClientError> {
-    let attempts = num_retries.unwrap_or(3).saturating_add(1);
+    let max_retries = num_retries.unwrap_or(3);
     let client = reqwest::Client::new();
     let mut last_response = None;
-    for attempt in 0..attempts {
+    for retry in 0..=max_retries {
         let request = client
             .post(url)
             .json(payload)
@@ -28,13 +28,13 @@ pub async fn post(
                     break;
                 }
                 Err(e) => {
-                    if attempt == attempts - 1 {
+                    if retry == max_retries {
                         return Err(e.into());
                     }
                 }
             },
             Err(e) => {
-                if attempt == attempts - 1 {
+                if retry == max_retries {
                     return Err(e.into());
                 }
             }
