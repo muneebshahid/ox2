@@ -53,3 +53,124 @@ fn backoff_delay(retry: u32) -> std::time::Duration {
     let delay = BASE_DELAY_MS * 2u64.pow(retry) as u64;
     std::time::Duration::from_millis(std::cmp::min(delay, MAX_DELAY_MS))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_backoff_delay() {
+        assert_eq!(backoff_delay(0), std::time::Duration::from_millis(1000));
+        assert_eq!(backoff_delay(1), std::time::Duration::from_millis(2000));
+        assert_eq!(backoff_delay(2), std::time::Duration::from_millis(4000));
+        assert_eq!(backoff_delay(3), std::time::Duration::from_millis(8000));
+    }
+
+    #[test]
+    fn test_backoff_delay_max() {
+        assert_eq!(backoff_delay(4), std::time::Duration::from_millis(10000));
+        assert_eq!(backoff_delay(10), std::time::Duration::from_millis(10000));
+    }
+
+    #[tokio::test]
+    async fn test_post_sends_payload_and_headers() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .match_header("x-custom", "hello")
+            .match_body(mockito::Matcher::Json(serde_json::json!({"key": "value"})))
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"result": "ok"}"#)
+            .create_async()
+            .await;
+
+        let payload = serde_json::json!({"key": "value"});
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("x-custom", "hello".parse().unwrap());
+
+        let result = post(&payload, Some(headers), &format!("{}/test", server.url())).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["result"], "ok");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_post_retries_on_server_error() {
+        let mut server = mockito::Server::new_async().await;
+        let fail_mock = server
+            .mock("POST", "/test")
+            .with_status(503)
+            .expect(2)
+            .create_async()
+            .await;
+        let success_mock = server
+            .mock("POST", "/test")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"retried": true}"#)
+            .create_async()
+            .await;
+
+        let payload = serde_json::json!({});
+        let result = post(&payload, None, &format!("{}/test", server.url())).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap()["retried"], true);
+        fail_mock.assert_async().await;
+        success_mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_post_fails_immediately_on_client_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(400)
+            .expect(1)
+            .create_async()
+            .await;
+
+        let payload = serde_json::json!({});
+        let result = post(&payload, None, &format!("{}/test", server.url())).await;
+
+        assert!(result.is_err());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_post_returns_error_when_retries_exhausted() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(500)
+            .expect((MAX_RETRIES + 1) as usize)
+            .create_async()
+            .await;
+
+        let payload = serde_json::json!({});
+        let result = post(&payload, None, &format!("{}/test", server.url())).await;
+
+        assert!(result.is_err());
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_post_returns_error_on_invalid_json() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/test")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not valid json")
+            .create_async()
+            .await;
+
+        let payload = serde_json::json!({});
+        let result = post(&payload, None, &format!("{}/test", server.url())).await;
+
+        assert!(result.is_err());
+        mock.assert_async().await;
+    }
+}
